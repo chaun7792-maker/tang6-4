@@ -1,0 +1,433 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Disney Magic - Professional Edition</title>
+    <link href="https://fonts.googleapis.com/css2?family=Pacifico&family=Roboto+Mono:wght@400&display=swap" rel="stylesheet">
+    <style>
+        body { margin: 0; overflow: hidden; background-color: #000; font-family: 'Pacifico', cursive; color: white; }
+        canvas { display: block; position: absolute; top: 0; left: 0; z-index: 1; }
+        
+        #ui-layer { position: absolute; top: 20px; left: 20px; z-index: 100; pointer-events: none; }
+        .btn { pointer-events: auto; background: rgba(255, 255, 255, 0.1); border: 1px solid rgba(255,255,255,0.5); color: white; padding: 10px 20px; cursor: pointer; border-radius: 30px; backdrop-filter: blur(5px); transition: 0.3s; font-family: sans-serif; font-size: 14px; }
+        .btn:hover { background: rgba(255, 255, 255, 0.3); }
+
+        #html-layer { position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 10; pointer-events: none; }
+        #disney-text { position: absolute; bottom: 15%; left: 50%; transform: translateX(-50%); font-size: 80px; text-shadow: 0 0 30px #87CEEB; opacity: 0; text-align: center; letter-spacing: 3px; }
+        
+        #falling-container { position: absolute; top: 0; left: 0; width: 100%; height: 100%; overflow: hidden; pointer-events: none; z-index: 15; }
+        .falling-img { position: absolute; width: 140px; height: 140px; object-fit: cover; border-radius: 50%; border: 4px solid #fff; box-shadow: 0 0 25px rgba(255,255,255,0.6); top: -200px; }
+
+        #final-paragraph { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 75%; font-family: 'Roboto Mono', monospace; font-size: 24px; line-height: 1.6; text-align: center; color: #fff; opacity: 0; }
+        .cursor { display: inline-block; width: 12px; height: 26px; background: #fff; animation: blink 0.8s infinite; vertical-align: middle; }
+        @keyframes blink { 0%, 100% { opacity: 1; } 50% { opacity: 0; } }
+
+        /* Bảng chỉnh sửa */
+        #editor-panel { display: none; position: absolute; top: 70px; left: 20px; background: rgba(0, 0, 0, 0.95); border: 1px solid #444; padding: 25px; border-radius: 20px; font-family: sans-serif; z-index: 200; width: 340px; max-height: 80vh; overflow-y: auto; }
+        .form-group { margin-bottom: 12px; }
+        .form-group label { display: block; font-size: 12px; color: #00d4ff; margin-bottom: 5px; text-transform: uppercase; font-weight: bold;}
+        .form-group input, .form-group textarea { width: 100%; padding: 10px; box-sizing: border-box; background: #111; border: 1px solid #333; color: white; border-radius: 8px; }
+        #share-link-box { width: 100%; padding: 10px; margin-top: 15px; background: #001a1a; color: #00ffcc; border: 1px dashed #00ffcc; border-radius: 8px; display: none; font-size: 11px; }
+    </style>
+</head>
+<body>
+
+<div id="ui-layer"><button class="btn" id="music-btn">Khởi tạo Phép màu 🎵</button></div>
+
+<div id="editor-panel">
+    <h3 style="margin: 0 0 15px 0; font-size: 18px;">🛠️ Cấu hình Hiệu ứng</h3>
+    <div class="form-group"><label>Nhạc (Link MP3):</label><input type="text" id="ed-musicUrl"></div>
+    <div class="form-group"><label>Ảnh rơi (Link, cách bởi dấu phẩy):</label><textarea id="ed-imageUrls" rows="3"></textarea></div>
+    <div class="form-group"><label>Dòng chữ Disney:</label><input type="text" id="ed-disneyText"></div>
+    <div class="form-group"><label>Dòng chữ 1 (Trong Sao):</label><input type="text" id="ed-starText1"></div>
+    <div class="form-group"><label>Dòng chữ 2 (Trong Sao):</label><input type="text" id="ed-starText2"></div>
+    <div class="form-group"><label>Đoạn văn chạy chữ:</label><textarea id="ed-finalParagraph" rows="3"></textarea></div>
+    <div class="form-group"><label>Màu Trái tim:</label><input type="color" id="ed-heartColor"></div>
+    <button class="btn" style="width: 100%; background: #0055ff; border:none;" onclick="generateLink()">Cập nhật & Tải lại</button>
+    <textarea id="share-link-box" readonly></textarea>
+</div>
+
+<div id="html-layer">
+    <div id="disney-text"></div>
+    <div id="falling-container"></div>
+    <div id="final-paragraph"></div>
+</div>
+
+<audio id="bg-music" loop>
+    <source src="" type="audio/mpeg">
+</audio>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.2/gsap.min.js"></script>
+
+<script>
+/** * CƠ CHẾ DỮ LIỆU & URL 
+ */
+const DEFAULT_CONFIG = { 
+    musicUrl: "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3",
+    imageUrls: "https://picsum.photos/400/400?random=1,https://picsum.photos/400/400?random=2,https://picsum.photos/400/400?random=3,https://picsum.photos/400/400?random=4",
+    disneyText: "Disney Magic", 
+    starText1: "Ngôi Sao Kỳ Diệu", 
+    starText2: "Ước Nguyện Của Bạn", 
+    finalParagraph: "Mọi giấc mơ đều có thể trở thành hiện thực nếu chúng ta đủ can đảm để theo đuổi chúng. Cảm ơn bạn đã luôn ở đây...", 
+    heartColor: "#ff0044" 
+};
+
+let CONFIG = { ...DEFAULT_CONFIG };
+const urlParams = new URLSearchParams(window.location.search);
+for (let key in DEFAULT_CONFIG) if (urlParams.has(key)) CONFIG[key] = urlParams.get(key);
+
+if (urlParams.get('edit') === 'true') { 
+    document.getElementById('editor-panel').style.display = 'block'; 
+    for (let key in DEFAULT_CONFIG) document.getElementById('ed-' + key).value = CONFIG[key]; 
+}
+
+function generateLink() { 
+    let newParams = new URLSearchParams(); 
+    for (let key in DEFAULT_CONFIG) { 
+        let el = document.getElementById('ed-' + key); 
+        if (el) newParams.set(key, el.value); 
+    } 
+    newParams.set('edit', 'true');
+    window.location.href = window.location.origin + window.location.pathname + '?' + newParams.toString();
+}
+
+const audio = document.getElementById('bg-music');
+audio.querySelector('source').src = CONFIG.musicUrl;
+audio.load();
+document.getElementById('disney-text').innerText = CONFIG.disneyText;
+
+/** * KHỞI TẠO ĐỒ HỌA 
+ */
+let scene, camera, renderer, particles, fireworksParticles, geometry;
+let state = "CASTLE"; 
+let textPoints = [];
+const PARTICLE_COUNT = 25000; // Tăng mật độ hạt để hình khối đặc hơn
+
+function init() {
+    scene = new THREE.Scene();
+    camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 3000);
+    camera.position.z = 550;
+
+    renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+    renderer.setPixelRatio(window.devicePixelRatio);
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    document.body.appendChild(renderer.domElement);
+
+    createSky();
+    createParticles();
+    createFireworksSystem(); 
+    generateTextPoints();
+
+    runMasterTimeline();
+    animate();
+}
+
+function createSky() {
+    const geo = new THREE.SphereGeometry(1500, 32, 32);
+    const mat = new THREE.ShaderMaterial({ 
+        side: THREE.BackSide, 
+        uniforms: { 
+            topColor: { value: new THREE.Color("#00020a") }, 
+            bottomColor: { value: new THREE.Color("#0a1535") } 
+        }, 
+        vertexShader: `varying vec3 vWorldPosition; void main() { vec4 worldPosition = modelMatrix * vec4( position, 1.0 ); vWorldPosition = worldPosition.xyz; gl_Position = projectionMatrix * modelViewMatrix * vec4( position, 1.0 ); }`, 
+        fragmentShader: `uniform vec3 topColor; uniform vec3 bottomColor; varying vec3 vWorldPosition; void main() { float h = normalize( vWorldPosition + vec3(0, 400, 0) ).y; gl_FragColor = vec4( mix( bottomColor, topColor, max( h, 0.0 ) ), 1.0 ); }` 
+    });
+    scene.add(new THREE.Mesh(geo, mat));
+}
+
+function createParticles() {
+    geometry = new THREE.BufferGeometry();
+    const pos = new Float32Array(PARTICLE_COUNT * 3);
+    for (let i = 0; i < PARTICLE_COUNT * 3; i++) pos[i] = (Math.random()-0.5)*3000;
+    geometry.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+    particles = new THREE.Points(geometry, new THREE.PointsMaterial({ color: 0xffffff, size: 2.0, transparent: true, opacity: 0.85, blending: THREE.AdditiveBlending }));
+    scene.add(particles);
+}
+
+function createFireworksSystem() {
+    const fwGeo = new THREE.BufferGeometry();
+    const fwPos = new Float32Array(6000 * 3);
+    const fwCols = new Float32Array(6000 * 3);
+    fwGeo.setAttribute('position', new THREE.BufferAttribute(fwPos, 3));
+    fwGeo.setAttribute('color', new THREE.BufferAttribute(fwCols, 3));
+    fireworksParticles = new THREE.Points(fwGeo, new THREE.PointsMaterial({ size: 3.2, vertexColors: true, transparent: true, opacity: 0, blending: THREE.AdditiveBlending }));
+    scene.add(fireworksParticles);
+}
+
+function generateTextPoints() {
+    const canvas = document.createElement('canvas');
+    canvas.width = 1200; canvas.height = 400; const ctx = canvas.getContext('2d');
+    ctx.font = '80px Pacifico'; ctx.fillStyle = '#fff'; ctx.textAlign = 'center';
+    ctx.fillText(CONFIG.starText1, 600, 160); ctx.fillText(CONFIG.starText2, 600, 300);
+    const data = ctx.getImageData(0,0,1200,400).data;
+    for(let y=0; y<400; y+=3) { for(let x=0; x<1200; x+=3) { if(data[(y*1200+x)*4] > 128) textPoints.push({x: x - 600, y: -(y - 200), z: (Math.random()-0.5)*15}); } }
+}
+
+/** * TOÁN HỌC TẠO HÌNH CHI TIẾT
+ */
+function getCastlePoint() {
+    let r = Math.random(), x, y, z = (Math.random() - 0.5) * 30;
+    // Thân lâu đài (Base)
+    if (r < 0.3) { x = (Math.random() - 0.5) * 180; y = -140 + Math.random() * 140; }
+    // Tháp trái và phải
+    else if (r < 0.55) { x = (r < 0.42 ? -110 : 110) + (Math.random() - 0.5) * 50; y = -140 + Math.random() * 220; }
+    // Tháp chính giữa
+    else if (r < 0.7) { x = (Math.random() - 0.5) * 40; y = 0 + Math.random() * 280; }
+    // Mái chóp 🏰
+    else {
+        let h = Math.random();
+        if (r < 0.85) { // Chóp giữa
+            let w = 60 * (1 - h); x = (Math.random() - 0.5) * w; y = 280 + h * 90;
+        } else { // Chóp tháp phụ
+            let side = Math.random() > 0.5 ? -110 : 110;
+            let w = 50 * (1 - h); x = side + (Math.random() - 0.5) * w; y = 80 + h * 70;
+        }
+    }
+    return {x, y, z}; 
+}
+
+function getStarPoint() {
+    // Ngôi sao đặc ruột
+    const numSpikes = 5, outerRadius = 240, innerRadius = 100;
+    const i = Math.floor(Math.random() * 5);
+    const rot = -Math.PI / 2;
+    const a1 = i * (Math.PI * 2 / 5) + rot;
+    const a2 = a1 + Math.PI / 5;
+    const a3 = a2 + Math.PI / 5;
+    
+    // Sử dụng rejection sampling để làm đặc ngôi sao
+    let r1 = Math.random(), r2 = Math.random();
+    if (r1 + r2 > 1) { r1 = 1 - r1; r2 = 1 - r2; }
+    
+    let x, y;
+    if (Math.random() > 0.5) {
+        x = r1 * Math.cos(a1) * outerRadius + r2 * Math.cos(a2) * innerRadius;
+        y = r1 * Math.sin(a1) * outerRadius + r2 * Math.sin(a2) * innerRadius;
+    } else {
+        x = r1 * Math.cos(a2) * innerRadius + r2 * Math.cos(a3) * outerRadius;
+        y = r1 * Math.sin(a2) * innerRadius + r2 * Math.sin(a3) * outerRadius;
+    }
+    // Thêm một ít hạt vào tâm để đặc hơn
+    if(Math.random() > 0.8) {
+        let rr = Math.random() * innerRadius;
+        let tt = Math.random() * Math.PI * 2;
+        x = Math.cos(tt) * rr; y = Math.sin(tt) * rr;
+    }
+    return {x, y: -y, z: (Math.random() - 0.5) * 40};
+}
+
+function getHeartPoint() {
+    // Trái tim đặc ❤️
+    let x, y, z = (Math.random()-0.5)*50;
+    // Thử ngẫu nhiên trong vùng bao và kiểm tra điều kiện trái tim
+    while(true) {
+        x = (Math.random() - 0.5) * 40;
+        y = (Math.random() - 0.5) * 40;
+        // Công thức bất đẳng thức trái tim: (x^2 + (9/4)y^2 + z^2 - 1)^3 - x^2*z^3 - (9/80)y^2*z^3 <= 0
+        // Đơn giản hóa 2D cho đặc:
+        let dx = x / 1.5;
+        let dy = y / 1.5;
+        let val = Math.pow(dx*dx + dy*dy - 1, 3) - dx*dx * Math.pow(dy, 3);
+        if (val < 0) break;
+    }
+    return { x: x * 8, y: y * 8, z };
+}
+
+/** * TIMELINE CHÍNH (LOGIC PHÉP MÀU)
+ */
+function runMasterTimeline() {
+    // 1. Lâu đài xuất hiện (Cân đối)
+    morphToShape("CASTLE", 4);
+    
+    // 2. Pháo hoa bắn nổ hình tròn
+    setTimeout(() => { playCircularFirework(); }, 4000);
+
+    // 3. Hiện chữ Disney
+    setTimeout(() => { gsap.to('#disney-text', { opacity: 1, duration: 2 }); }, 5500);
+
+    // 4. Nổ lâu đài -> Thành Ngôi sao (Đứng yên)
+    setTimeout(() => {
+        gsap.to('#disney-text', { opacity: 0, duration: 1.5 });
+        explodeParticles(1.5);
+        setTimeout(() => {
+            state = "STAR";
+            gsap.to(particles.material.color, { r: 1, g: 0.9, b: 0.3, duration: 2 });
+            morphToShape("STAR", 3);
+        }, 1600);
+    }, 11000);
+
+    // 5. Ngôi sao nổ -> Thành Dòng chữ (Đứng yên)
+    setTimeout(() => {
+        explodeParticles(1.2);
+        setTimeout(() => {
+            state = "TEXTS";
+            gsap.to(particles.material.color, { r: 1, g: 1, b: 1, duration: 2 });
+            morphToShape("TEXTS", 3);
+        }, 1300);
+    }, 19000);
+
+    // 6. Chữ biến mất -> Ảnh rơi + Chấm rơi
+    setTimeout(() => {
+        gsap.to(particles.material, { opacity: 0, duration: 2, onComplete: () => {
+            state = "FALLING";
+            launchFallingSequence();
+        }});
+    }, 26000);
+}
+
+function morphToShape(shape, duration) {
+    const pos = geometry.attributes.position.array;
+    for (let i = 0; i < PARTICLE_COUNT; i++) {
+        let pt;
+        if (shape === "CASTLE") pt = getCastlePoint();
+        else if (shape === "STAR") pt = getStarPoint();
+        else if (shape === "TEXTS") pt = textPoints[i % textPoints.length] || {x:0, y:0, z:0};
+        else if (shape === "HEART") pt = getHeartPoint();
+        
+        gsap.to(pos, { 
+            duration: duration, 
+            [i*3]: pt.x, [i*3+1]: pt.y, [i*3+2]: pt.z, 
+            ease: "expo.inOut", 
+            onUpdate: () => geometry.attributes.position.needsUpdate = true 
+        });
+    }
+}
+
+function playCircularFirework() {
+    fireworksParticles.material.opacity = 1;
+    const pos = fireworksParticles.geometry.attributes.position.array;
+    const cols = fireworksParticles.geometry.attributes.color.array;
+    const colors = [new THREE.Color("#ff0066"), new THREE.Color("#00ffcc"), new THREE.Color("#ffcc00"), new THREE.Color("#ffffff")];
+
+    for(let f=0; f<6; f++) {
+        setTimeout(() => {
+            const cX = (Math.random()-0.5)*500, cY = 100 + Math.random()*200;
+            const c = colors[f % colors.length];
+            for(let i=0; i<1000; i++) {
+                let idx = (f*1000 + i)*3;
+                pos[idx] = cX; pos[idx+1] = -400; pos[idx+2] = 0;
+                cols[idx] = c.r; cols[idx+1] = c.g; cols[idx+2] = c.b;
+                gsap.to(pos, { [idx+1]: cY, duration: 1, ease: "power2.out", onComplete: () => {
+                    const phi = Math.random()*Math.PI*2, theta = Math.random()*Math.PI;
+                    const r = 150 + Math.random()*100;
+                    gsap.to(pos, { 
+                        [idx]: cX + r * Math.sin(theta) * Math.cos(phi),
+                        [idx+1]: cY + r * Math.sin(theta) * Math.sin(phi),
+                        [idx+2]: r * Math.cos(theta),
+                        duration: 1.8, ease: "expo.out" 
+                    });
+                    gsap.to(cols, { [idx]: 0, [idx+1]: 0, [idx+2]: 0, duration: 1.8 });
+                }});
+            }
+        }, f * 600);
+    }
+}
+
+function launchFallingSequence() {
+    // 1. Ảnh rơi
+    const container = document.getElementById('falling-container');
+    const urls = CONFIG.imageUrls.split(',');
+    urls.forEach((url, i) => {
+        const img = document.createElement('img');
+        img.src = url.trim();
+        img.className = 'falling-img';
+        container.appendChild(img);
+        gsap.set(img, { left: (15 + Math.random()*70) + "%" });
+        gsap.to(img, { top: "120%", rotation: 360, duration: 8 + Math.random()*4, delay: i * 2, ease: "none" });
+    });
+
+    // 2. Chấm rơi lấp lánh (Dùng lại hệ thống hạt)
+    particles.material.opacity = 0.8;
+    particles.material.color.set("#ffffff");
+    const pos = geometry.attributes.position.array;
+    for (let i = 0; i < PARTICLE_COUNT; i++) {
+        pos[i*3] = (Math.random()-0.5)*2000;
+        pos[i*3+1] = 800 + Math.random()*1000;
+        gsap.to(pos, { 
+            [i*3+1]: -800, duration: 5 + Math.random()*5, ease: "none", repeat: 1, delay: Math.random()*5,
+            onUpdate: () => geometry.attributes.position.needsUpdate = true
+        });
+    }
+
+    // 3. Sau khi rơi hết -> Chữ chạy -> Trái tim đặc
+    setTimeout(() => {
+        const p = document.getElementById('final-paragraph');
+        gsap.to(p, { opacity: 1, duration: 1 });
+        typeWriter(p, CONFIG.finalParagraph, () => {
+            setTimeout(() => {
+                gsap.to(p, { opacity: 0, duration: 2 });
+                // Cuối cùng: Trái tim đỏ đặc
+                state = "HEART";
+                gsap.to(particles.material.color, { 
+                    r: parseInt(CONFIG.heartColor.slice(1,3), 16)/255, 
+                    g: parseInt(CONFIG.heartColor.slice(3,5), 16)/255, 
+                    b: parseInt(CONFIG.heartColor.slice(5,7), 16)/255, 
+                    duration: 2 
+                });
+                particles.material.opacity = 1;
+                morphToShape("HEART", 4);
+            }, 3000);
+        });
+    }, 15000);
+}
+
+function explodeParticles(dur) {
+    const pos = geometry.attributes.position.array;
+    for (let i = 0; i < PARTICLE_COUNT; i++) {
+        gsap.to(pos, { 
+            [i*3]: pos[i*3]*2.5, [i*3+1]: pos[i*3+1]*2.5, [i*3+2]: (Math.random()-0.5)*500,
+            duration: dur, ease: "expo.out", onUpdate: () => geometry.attributes.position.needsUpdate = true
+        });
+    }
+}
+
+function typeWriter(element, text, callback) {
+    element.innerHTML = ''; let i = 0;
+    function type() { 
+        if (i < text.length) { 
+            element.innerHTML = text.substring(0, i + 1) + '<span class="cursor"></span>'; 
+            i++; setTimeout(type, 50); 
+        } else if (callback) callback(); 
+    }
+    type();
+}
+
+function animate() {
+    requestAnimationFrame(animate);
+    if (state === "HEART") {
+        let s = 1 + Math.sin(Date.now()*0.005)*0.05;
+        particles.scale.set(s,s,s);
+        particles.rotation.y += 0.005;
+    } else if (state === "STAR" || state === "TEXTS") {
+        // Đứng yên như yêu cầu
+        particles.rotation.y = 0;
+    } else {
+        particles.rotation.y += 0.001;
+    }
+    fireworksParticles.geometry.attributes.position.needsUpdate = true;
+    fireworksParticles.geometry.attributes.color.needsUpdate = true;
+    renderer.render(scene, camera);
+}
+
+document.getElementById('music-btn').onclick = () => { 
+    if (audio.paused) { 
+        audio.play(); 
+        document.getElementById('music-btn').innerText = "Đang phát nhạc... 🔇"; 
+        init(); // Khởi tạo khi nhấn nút để tránh chính sách chặn auto-play
+    } else { 
+        audio.pause(); 
+        document.getElementById('music-btn').innerText = "Phát Nhạc 🎵"; 
+    } 
+};
+
+window.addEventListener('resize', () => { 
+    camera.aspect = window.innerWidth / window.innerHeight; 
+    camera.updateProjectionMatrix(); 
+    renderer.setSize(window.innerWidth, window.innerHeight); 
+});
+</script>
+</body>
+</html>
